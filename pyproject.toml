@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "alchemy"
+version = "0.1.0"
+description = "ALchemy /ˈæl.kə.mi/ (noun): a process so effective that it seems like magic."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Sumner B. Harris", email = "harrissb@ornl.gov" }
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent"
+]
+dependencies = [
+  "torch>=1.13",
+  "gpytorch>=1.8",
+  "botorch>=0.7",
+  "scikit-learn>=1.0",
+  "neurobayes>=0.0.1",
+  "pandas>=1.1",
+  "matplotlib>=3.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
