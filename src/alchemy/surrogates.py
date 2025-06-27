@@ -13,7 +13,8 @@ from gpytorch.mlls import ExactMarginalLogLikelihood
 from botorch.fit import fit_gpytorch_mll
 from botorch.sampling.get_sampler import GetSampler
 from botorch.sampling.normal import IIDNormalSampler
-
+from botorch.models.transforms.input import Normalize
+from botorch.models.transforms.outcome import Standardize
 
 class EnsemblePosterior(TorchPosterior):
     def __init__(self, mean: torch.Tensor, std: torch.Tensor):
@@ -58,9 +59,10 @@ def _get_sampler_normal(posterior, sample_shape: torch.Size, seed: int = None):
 
 class RandomForestSurrogate(Model):
     """A bootstrap‐ensemble RF that exposes an MC‐capable posterior."""
-    def __init__(self, n_estimators: int = 10, **rf_kwargs):
+    def __init__(self, n_bootstrap: int = 10, n_trees: int = 100, **rf_kwargs):
         super().__init__()
-        self.n_estimators = n_estimators
+        self.n_bootstrap = n_bootstrap
+        self.n_trees = n_trees
         self.rf_kwargs = rf_kwargs
         self.models = []
         self._num_outputs = None
@@ -72,29 +74,36 @@ class RandomForestSurrogate(Model):
         return self._num_outputs
 
     def fit(self, X: torch.Tensor, Y: torch.Tensor, **fit_kwargs) -> "RandomForestSurrogate":
-        X_np = X.detach().cpu().numpy()
-        Y_np = Y.detach().cpu().numpy()
-        if Y_np.ndim == 1:
-            Y_np = Y_np.reshape(-1, 1)
-        n, k = Y_np.shape
-        self._num_outputs = k
+        self.input_transform = Normalize(d=X.shape[-1])
+        self.outcome_transform = Standardize(m=Y.shape[-1])
+
+        X_scaled = self.input_transform(X)
+        Y_scaled = self.outcome_transform(Y)[0]
+
+        X_np = X_scaled.detach().cpu().numpy()
+        Y_np = Y_scaled.detach().cpu().numpy().ravel()
+
+        self._num_outputs = 1
         self.models = []
-        for _ in range(self.n_estimators):
-            idxs = np.random.choice(n, n, replace=True)
-            rf = RandomForestRegressor(**self.rf_kwargs)
-            rf.fit(X_np[idxs], Y_np[idxs].ravel())
+        for _ in range(self.n_bootstrap):
+            idxs = np.random.choice(len(X_np), len(X_np), replace=True)
+            rf = RandomForestRegressor(n_estimators=self.n_trees,**self.rf_kwargs)
+            rf.fit(X_np[idxs], Y_np[idxs])
             self.models.append(rf)
         return self
 
     def posterior(self, X: torch.Tensor, observation_noise: bool = False, **kwargs):
-        batch_dims = X.shape[:-1]
-        d = X.shape[-1]
-        X_flat = X.reshape(-1, d).detach().cpu().numpy()
+        X_scaled = self.input_transform(X)
+        X_flat = X_scaled.reshape(-1, X_scaled.shape[-1]).detach().cpu().numpy()
+        
         preds = np.stack([m.predict(X_flat) for m in self.models], axis=0)
-        mean_np = preds.mean(axis=0)
-        std_np = preds.std(axis=0) + 1e-6
-        mean = torch.from_numpy(mean_np).float().reshape(*batch_dims, -1)
-        std = torch.from_numpy(std_np).float().reshape(*batch_dims, -1)
+        mean = torch.from_numpy(preds.mean(axis=0)).float().reshape(X_scaled.shape[:-1] + (1,))
+        std  = torch.from_numpy(preds.std(axis=0) + 1e-6).float().reshape(X_scaled.shape[:-1] + (1,))
+    
+        mean = self.outcome_transform.untransform(mean)[0]
+        #std  = self.outcome_transform.untransform(std)[0]
+        std  = std * self.outcome_transform.stdvs
+    
         return EnsemblePosterior(mean, std)
 
 
@@ -116,26 +125,33 @@ class NeuroBayesBNNSurrogate(Model):
         return self._num_outputs
 
     def fit(self, X: torch.Tensor, Y: torch.Tensor, **kwargs) -> "NeuroBayesBNNSurrogate":
-        X_np = X.detach().cpu().numpy()
-        Y_np = Y.detach().cpu().numpy()
-        if Y_np.ndim == 1:
-            Y_np = Y_np.reshape(-1, 1)
-        n, k = Y_np.shape
-        self._num_outputs = k
+        self.input_transform = Normalize(d=X.shape[-1])
+        self.outcome_transform = Standardize(m=Y.shape[-1])
+
+        X_scaled = self.input_transform(X)
+        Y_scaled = self.outcome_transform(Y)[0]
+
+        X_np = X_scaled.detach().cpu().numpy()
+        Y_np = Y_scaled.detach().cpu().numpy()
+
+        self._num_outputs = Y_np.shape[1]
         bnn = nb.BNN(self.architecture)
         bnn.fit(X_np, Y_np, num_warmup=self.num_warmup, num_samples=self.num_samples, **self.fit_kwargs)
         self.bnn_model = bnn
         return self
 
     def posterior(self, X: torch.Tensor, observation_noise: bool = False, **kwargs):
-        batch_dims = X.shape[:-1]
-        d = X.shape[-1]
-        X_flat = X.reshape(-1, d).detach().cpu().numpy()
+        X_scaled = self.input_transform(X)
+        X_flat = X_scaled.reshape(-1, X_scaled.shape[-1]).detach().cpu().numpy()
+    
         mean_np, var_np = self.bnn_model.predict(X_flat)
-        mean_np = np.array(mean_np)
-        std_np  = np.sqrt(np.array(var_np)) + 1e-6
-        mean = torch.from_numpy(mean_np).float().reshape(*batch_dims, -1)
-        std = torch.from_numpy(std_np).float().reshape(*batch_dims, -1)
+        mean = torch.from_numpy(np.array(mean_np)).float().reshape(X_scaled.shape[:-1] + (1,))
+        std  = torch.from_numpy(np.sqrt(np.array(var_np)) + 1e-6).float().reshape(X_scaled.shape[:-1] + (1,))
+    
+        mean = self.outcome_transform.untransform(mean)[0]
+        #std  = self.outcome_transform.untransform(std)[0]
+        std  = std * self.outcome_transform.stdvs
+    
         return EnsemblePosterior(mean, std)
 
 

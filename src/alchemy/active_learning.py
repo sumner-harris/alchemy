@@ -61,6 +61,10 @@ def step_surrogate(
     if not maximize:
         mean = -mean
 
+    # 3.5) Ensure acquisition uses standardized Y for non-GP models
+    if hasattr(model, 'outcome_transform') and name in ('rf', 'bnn'):
+        Y_train = model.outcome_transform(Y_train)[0]
+
     candidates = None
     acq_vals = torch.tensor([])
 
