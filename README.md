@@ -57,7 +57,7 @@ candidates, surrogate_mean, surrogate_variance, acquisition_vals = step_surrogat
 )
 ```
 
-Current also support sci-kit random forests
+Currently also support sci-kit random forests with bootstrap aggregation for uncertainty.
 
 ```python
 surrogate = {
@@ -69,7 +69,7 @@ surrogate = {
     }
 }
 ```
-Also support NeuroBayes (Jax-based) Bayesian Neural Networks
+And also support NeuroBayes (Jax-based) fully Bayesian Neural Networks
 
 ```python
 import neurobayes as nb;
