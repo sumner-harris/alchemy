@@ -5,6 +5,14 @@ ALchemy is a package for active learning built with experimentalists in physics,
 The goal is to provide one interface for calculating various surrogate models (from various packages) and acquisition functions with as little 
 code as possible to lower the barrier to adopt modern AI-driven experimentation practices.
 
+# Install Instructions
+I reccomend using uv to create a new virtual environment and manage dependencies. First install uv https://docs.astral.sh/uv/getting-started/installation/ 
+
+You can then install ALchemy by running:
+```bash
+uv pip install git+https://github.com/sumner-harris/alchemy.git
+```
+
 ## Example
 
 Here’s how you’d define the core “step_surrogate” function:
