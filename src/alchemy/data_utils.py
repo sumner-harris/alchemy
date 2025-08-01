@@ -4,6 +4,9 @@ import math
 import itertools
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+from matplotlib.gridspec import GridSpec
+from matplotlib.ticker import ScalarFormatter
 
 def read_print_data(file_path: str,
                    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
